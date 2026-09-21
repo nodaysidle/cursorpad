@@ -43,6 +43,23 @@ struct CursorpadApp: App {
             CommandGroup(after: .textEditing) {
                 Button("Retry Editor Font") { state.retryEditorTypography() }
             }
+            CommandMenu("View") {
+                Button("Zoom In") { state.increaseFontSize() }
+                    .keyboardShortcut("+", modifiers: .command)
+                Button("Zoom Out") { state.decreaseFontSize() }
+                    .keyboardShortcut("-", modifiers: .command)
+                Button("Actual Size") { state.resetFontSize() }
+                    .keyboardShortcut("0", modifiers: .command)
+                Divider()
+                Button(state.editorConfiguration.wrapsLines ? "Disable Line Wrapping" : "Enable Line Wrapping") {
+                    state.toggleWordWrap()
+                }
+                .keyboardShortcut("z", modifiers: .option)
+            }
+        }
+
+        Settings {
+            EditorSettingsView(state: state)
         }
     }
 }

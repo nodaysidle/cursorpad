@@ -168,8 +168,24 @@ struct CompactSidebarLibraryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            filterBar
             if state.sidebarRows.isEmpty {
-                CompactSidebarEmptyStateView(onCreateNote: { state.newNote() })
+                if !state.sidebarFilterQuery.isEmpty {
+                    VStack(spacing: 8) {
+                        Spacer()
+                        Text("No matching notes")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(EditorSurfaceTokens.textSecondary)
+                        Button("Clear filter") {
+                            state.updateSidebarFilter("")
+                        }
+                        .controlSize(.small)
+                        Spacer()
+                    }
+                    .padding()
+                } else {
+                    CompactSidebarEmptyStateView(onCreateNote: { state.newNote() })
+                }
             } else {
                 list
             }
@@ -210,6 +226,41 @@ struct CompactSidebarLibraryView: View {
             state.deleteNote(id: selectedNoteID)
         }
         .accessibilityIdentifier("library-list")
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(EditorSurfaceTokens.textSecondary)
+            TextField("Filter notes…", text: Binding(
+                get: { state.sidebarFilterQuery },
+                set: { state.updateSidebarFilter($0) }
+            ))
+            .textFieldStyle(.plain)
+            .font(.system(size: 11))
+            .foregroundStyle(EditorSurfaceTokens.textPrimary)
+            .accessibilityIdentifier("sidebar-filter-field")
+            if !state.sidebarFilterQuery.isEmpty {
+                Button {
+                    state.updateSidebarFilter("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(EditorSurfaceTokens.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear filter")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(EditorSurfaceTokens.sidebarBackground)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EditorSurfaceTokens.divider)
+                .frame(height: 1)
+        }
     }
 }
 

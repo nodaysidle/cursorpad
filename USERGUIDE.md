@@ -64,6 +64,12 @@ Press **⌘N** and start typing; there is nothing else to set up.
 | Shortcut | Action |
 | --- | --- |
 | **⌘N** | New note |
+| **⌘S** | Save immediately (autosave also runs automatically) |
+| **⌘,** | Preferences / Settings (font size, tab width, line wrapping) |
+| **⌘+** / **⌘=** | Zoom in (increase editor font size) |
+| **⌘-** | Zoom out (decrease editor font size) |
+| **⌘0** | Reset font size to default 13 pt |
+| **⌥Z** | Toggle line wrapping on/off |
 | **⌘P** | Open the command palette |
 | **⌘K** | Open the command palette (quick open) |
 | **⌘B** | Show or hide the library sidebar |

@@ -496,6 +496,61 @@ struct CompactSidebarLibraryFeatureTests {
         #expect(state.sidebarRows.first?.isSelected == true)
         #expect(state.editorText.isEmpty)
     }
+
+    @Test("sidebar filter narrows visible notes dynamically and clearing restores all notes")
+    func sidebarFilterBehaviors() async throws {
+        let state = try await makeTwoNoteState(label: "sidebar-filter-test")
+        #expect(state.sidebarRows.count == 2)
+
+        state.updateSidebarFilter("Alpha")
+        #expect(state.sidebarRows.count == 1)
+        #expect(state.sidebarRows.first?.title == "Alpha")
+
+        state.updateSidebarFilter("beta")
+        #expect(state.sidebarRows.count == 1)
+        #expect(state.sidebarRows.first?.title == "Beta")
+
+        state.updateSidebarFilter("NonExistent")
+        #expect(state.sidebarRows.isEmpty)
+
+        state.updateSidebarFilter("")
+        #expect(state.sidebarRows.count == 2)
+    }
+
+    @Test("editor word count accurately reflects typed whitespace and newlines")
+    func editorWordCountAccuracy() async throws {
+        let state = try await makeTwoNoteState(label: "editor-word-count-test")
+        state.applyEditorText("Hello world from CursorPad")
+        #expect(state.editorWordCount == 4)
+        #expect(state.editorCharacterCount == 26)
+
+        state.applyEditorText("One\nTwo\nThree   Four")
+        #expect(state.editorWordCount == 4)
+
+        state.applyEditorText("")
+        #expect(state.editorWordCount == 0)
+    }
+
+    @Test("editor configuration shortcuts update font size, wrap, and persist to store")
+    func editorConfigurationControls() async throws {
+        let state = try await makeTwoNoteState(label: "editor-config-test")
+        let initial = state.editorConfiguration.fontSize
+        #expect(initial == 13)
+
+        state.increaseFontSize()
+        #expect(state.editorConfiguration.fontSize == 14)
+
+        state.decreaseFontSize()
+        state.decreaseFontSize()
+        #expect(state.editorConfiguration.fontSize == 12)
+
+        state.resetFontSize()
+        #expect(state.editorConfiguration.fontSize == 13)
+
+        let initialWrap = state.editorConfiguration.wrapsLines
+        state.toggleWordWrap()
+        #expect(state.editorConfiguration.wrapsLines == !initialWrap)
+    }
 }
 
 private enum SidebarTestError: Error, LocalizedError {

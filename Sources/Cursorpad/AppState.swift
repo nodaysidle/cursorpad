@@ -144,6 +144,8 @@ final class AppState {
     private(set) var missingBodyNoteIDs: Set<String> = []
     /// Compact sidebar presentation rows (PHASE-07), newest first.
     private(set) var sidebarRows: [CompactSidebarRow] = []
+    /// Filter query for searching notes directly within the sidebar.
+    private(set) var sidebarFilterQuery = ""
     /// Explicit-delete bookkeeping: the row stays until the trash + metadata delete both succeed.
     private(set) var pendingDeletionNoteID: String?
     private(set) var pendingDeletionFailure: String?
@@ -151,6 +153,9 @@ final class AppState {
     var trashService = BodyTrashService.live
     private(set) var editorText = ""
     private(set) var editorCharacterCount = 0
+    var editorWordCount: Int {
+        editorText.split { $0.isWhitespace || $0.isNewline }.count
+    }
     private(set) var editorFontSource: EditorFontSource = .sfMono
     private(set) var editorFontNotice: String?
     private(set) var editorTypographyRetryRequests = 0
@@ -775,10 +780,25 @@ final class AppState {
 
     // MARK: - Compact sidebar library (PHASE-07)
 
+    /// Updates the sidebar note search filter and rebuilds visible rows.
+    func updateSidebarFilter(_ query: String) {
+        sidebarFilterQuery = query
+        publishSidebarRows()
+    }
+
     /// Rebuilds the sidebar rows. Called after every library, selection, edit or delete change.
     func publishSidebarRows(now: Date = Date()) {
+        let trimmed = sidebarFilterQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visibleNotes: [NoteDocument]
+        if trimmed.isEmpty {
+            visibleNotes = notes
+        } else {
+            visibleNotes = notes.filter {
+                $0.title.localizedCaseInsensitiveContains(trimmed)
+            }
+        }
         sidebarRows = CompactSidebarLibrary.rows(
-            notes: notes,
+            notes: visibleNotes,
             selectedID: selectedNoteID,
             missingBodyIDs: missingBodyNoteIDs,
             now: now
@@ -901,6 +921,46 @@ final class AppState {
     }
 
     // MARK: - Preferences
+
+    /// Updates editor configuration and persists it to UserDefaults.
+    func updateEditorConfiguration(_ configuration: EditorConfiguration) {
+        self.editorConfiguration = configuration
+        EditorConfigurationStore(defaults: services.userDefaults).save(configuration)
+    }
+
+    /// Resets editor configuration to standard defaults.
+    func resetEditorConfiguration() {
+        let reset = EditorConfigurationStore(defaults: services.userDefaults).reset()
+        self.editorConfiguration = reset
+    }
+
+    /// Increases editor font size by 1pt (Command + +).
+    func increaseFontSize() {
+        var updated = editorConfiguration
+        updated.fontSize = min(32, updated.fontSize + 1)
+        updateEditorConfiguration(updated)
+    }
+
+    /// Decreases editor font size by 1pt (Command + -).
+    func decreaseFontSize() {
+        var updated = editorConfiguration
+        updated.fontSize = max(9, updated.fontSize - 1)
+        updateEditorConfiguration(updated)
+    }
+
+    /// Resets font size to the default 13pt (Command + 0).
+    func resetFontSize() {
+        var updated = editorConfiguration
+        updated.fontSize = EditorConfiguration.default.fontSize
+        updateEditorConfiguration(updated)
+    }
+
+    /// Toggles word wrapping on/off (Option + Z).
+    func toggleWordWrap() {
+        var updated = editorConfiguration
+        updated.wrapsLines.toggle()
+        updateEditorConfiguration(updated)
+    }
 
     private func restoreSidebarPreference() {
         if services.userDefaults.object(forKey: AppPreferenceKeys.sidebarVisible) != nil {
@@ -1045,7 +1105,7 @@ struct AppRootView: View {
                 .accessibilityIdentifier("status-message")
             Spacer()
             if state.selectedNoteID != nil {
-                Text("\(state.editorCharacterCount) characters")
+                Text("\(state.editorWordCount) words · \(state.editorCharacterCount) characters")
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .accessibilityIdentifier("status-character-count")
