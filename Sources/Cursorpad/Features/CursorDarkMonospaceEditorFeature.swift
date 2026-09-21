@@ -47,23 +47,24 @@ enum EditorTypography {
     typealias FontProvider = @Sendable (String, CGFloat) -> NSFont?
 
     static func resolveFont(
+        size: CGFloat = CursorDarkEditorTokens.fontSize,
         provider: FontProvider = { name, size in NSFont(name: name, size: size) }
     ) -> (font: NSFont, source: EditorFontSource) {
-        if let font = provider(CursorDarkEditorTokens.preferredFontName, CursorDarkEditorTokens.fontSize) {
+        if let font = provider(CursorDarkEditorTokens.preferredFontName, size) {
             return (font, .sfMono)
         }
-        if let font = provider(CursorDarkEditorTokens.fallbackFontName, CursorDarkEditorTokens.fontSize) {
+        if let font = provider(CursorDarkEditorTokens.fallbackFontName, size) {
             return (font, .sfMono)
         }
-        return (NSFont.monospacedSystemFont(ofSize: CursorDarkEditorTokens.fontSize, weight: .regular), .systemMonospaced)
+        return (NSFont.monospacedSystemFont(ofSize: size, weight: .regular), .systemMonospaced)
     }
 
-    /// 1.45 line height, word wrapping and the editor's fixed tab width.
-    static func paragraphStyle(tabWidth: Int = 4) -> NSMutableParagraphStyle {
+    /// 1.45 line height, wrapping and the editor's tab width.
+    static func paragraphStyle(fontSize: CGFloat = CursorDarkEditorTokens.fontSize, tabWidth: Int = 4, wrapsLines: Bool = true) -> NSMutableParagraphStyle {
         let style = NSMutableParagraphStyle()
         style.lineHeightMultiple = CursorDarkEditorTokens.lineHeightMultiple
-        style.lineBreakMode = .byWordWrapping
-        let charWidth = NSFont.monospacedSystemFont(ofSize: CursorDarkEditorTokens.fontSize, weight: .regular)
+        style.lineBreakMode = wrapsLines ? .byWordWrapping : .byClipping
+        let charWidth = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
             .advancement(forCGGlyph: 32).width
         let tabInterval = max(1, CGFloat(tabWidth)) * charWidth
         style.defaultTabInterval = tabInterval
@@ -81,6 +82,7 @@ final class CursorTextView: NSTextView {
     private(set) var fontSource: EditorFontSource = .sfMono
     private(set) var typographyRefreshCount = 0
     private(set) var gutterRecalculationCount = 0
+    private var editorConfiguration = EditorConfiguration.default
 
     weak var gutter: CursorGutterView?
 
@@ -111,9 +113,7 @@ final class CursorTextView: NSTextView {
     }
 
     private func configure() {
-        let resolved = EditorTypography.resolveFont()
-        fontSource = resolved.source
-        applyTypography(resolved.font)
+        applyEditorConfiguration(.default)
 
         backgroundColor = CursorDarkEditorTokens.editorBackground
         drawsBackground = true
@@ -139,29 +139,47 @@ final class CursorTextView: NSTextView {
         minSize = .zero
         maxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         isVerticallyResizable = true
-        isHorizontallyResizable = false
-        autoresizingMask = [.width]
-        textContainer?.widthTracksTextView = true
+        applyWrapping(editorConfiguration.wrapsLines)
         needsDisplay = true
     }
 
     /// Re-resolves the typography, preserving the last valid state when the preferred font is
     /// missing (explicit retry path for the editor recovery contract).
     func refreshTypography() {
-        let resolved = EditorTypography.resolveFont()
-        fontSource = resolved.source
+        applyEditorConfiguration(editorConfiguration)
         typographyRefreshCount += 1
+    }
+
+    /// Applies stored editor preferences: font size, tab width and word wrap. Defaults match the
+    /// locked 13 pt / tab 4 / wrap surface when the user has not changed them.
+    func applyEditorConfiguration(_ configuration: EditorConfiguration) {
+        editorConfiguration = configuration
+        let size = CGFloat(configuration.fontSize)
+        let resolved = EditorTypography.resolveFont(size: size)
+        fontSource = resolved.source
         applyTypography(resolved.font)
+        applyWrapping(configuration.wrapsLines)
+    }
+
+    private func applyWrapping(_ wrapsLines: Bool) {
+        isHorizontallyResizable = !wrapsLines
+        textContainer?.widthTracksTextView = wrapsLines
+        autoresizingMask = [.width]
     }
 
     private func applyTypography(_ font: NSFont) {
+        let style = EditorTypography.paragraphStyle(
+            fontSize: font.pointSize,
+            tabWidth: editorConfiguration.tabWidth,
+            wrapsLines: editorConfiguration.wrapsLines
+        )
         self.font = font
         textColor = CursorDarkEditorTokens.text
-        defaultParagraphStyle = EditorTypography.paragraphStyle()
+        defaultParagraphStyle = style
         typingAttributes = [
             .font: font,
             .foregroundColor: CursorDarkEditorTokens.text,
-            .paragraphStyle: EditorTypography.paragraphStyle()
+            .paragraphStyle: style
         ]
     }
 
@@ -243,12 +261,14 @@ final class CursorTextView: NSTextView {
     }
 
     /// View-space Y of the first layout line at `characterIndex` (TextKit 2 fragments).
-    func lineOriginY(characterIndex: Int) -> CGFloat? {
+    func lineOriginY(characterIndex: Int, ensuringLayout: Bool = true) -> CGFloat? {
         guard let layoutManager = textLayoutManager,
               let contentManager = layoutManager.textContentManager else { return nil }
         let length = (string as NSString).length
         let clamped = max(0, min(characterIndex, length))
-        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        if ensuringLayout {
+            layoutManager.ensureLayout(for: layoutManager.documentRange)
+        }
         guard let location = contentManager.location(layoutManager.documentRange.location, offsetBy: clamped) else {
             return nil
         }
@@ -333,6 +353,9 @@ final class CursorGutterView: NSRulerView {
         guard let textView else { return }
         let lineStarts = textView.logicalLineStartOffsets()
         lastRenderedLineCount = lineStarts.count
+        if let layoutManager = textView.textLayoutManager {
+            layoutManager.ensureLayout(for: layoutManager.documentRange)
+        }
 
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedSystemFont(ofSize: CursorDarkEditorTokens.gutterFontSize, weight: .regular),
@@ -340,7 +363,7 @@ final class CursorGutterView: NSRulerView {
         ]
 
         for (index, lineStart) in lineStarts.enumerated() {
-            guard let yInTextView = textView.lineOriginY(characterIndex: lineStart) else { continue }
+            guard let yInTextView = textView.lineOriginY(characterIndex: lineStart, ensuringLayout: false) else { continue }
             let label = "\(index + 1)" as NSString
             let size = label.size(withAttributes: attributes)
             let yInGutter = convert(NSPoint(x: 0, y: yInTextView), from: textView).y
@@ -361,6 +384,7 @@ struct CursorDarkMonospaceEditorView: NSViewRepresentable {
     /// deterministic. The editor never writes through a binding: it reports changes through
     /// `onTextChange`, which the composition root applies.
     var text: String
+    var configuration: EditorConfiguration = .default
     var onTextChange: @MainActor (String) -> Void
     var focusRequests: Int = 0
     var typographyRetryRequests: Int = 0
@@ -373,7 +397,9 @@ struct CursorDarkMonospaceEditorView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let assembly = CursorTextView.makeConfiguredScrollView()
         context.coordinator.textView = assembly.textView
+        context.coordinator.observedConfiguration = configuration
         assembly.textView.delegate = context.coordinator
+        assembly.textView.applyEditorConfiguration(configuration)
         assembly.textView.applyExternalText(text)
         context.coordinator.observedFocusRequests = focusRequests
         context.coordinator.observedTypographyRetryRequests = typographyRetryRequests
@@ -384,6 +410,11 @@ struct CursorDarkMonospaceEditorView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = context.coordinator.textView else { return }
         context.coordinator.onTextChange = onTextChange
+        if context.coordinator.observedConfiguration != configuration {
+            context.coordinator.observedConfiguration = configuration
+            textView.applyEditorConfiguration(configuration)
+            onTypographyResolved(textView.fontSource)
+        }
         textView.applyExternalText(text)
 
         if context.coordinator.observedFocusRequests != focusRequests {
@@ -414,6 +445,7 @@ final class CursorEditorCoordinator: NSObject, NSTextViewDelegate {
     private(set) var lastPublishedText = ""
     var observedFocusRequests = 0
     var observedTypographyRetryRequests = 0
+    var observedConfiguration = EditorConfiguration.default
 
     init(onTextChange: @MainActor @escaping (String) -> Void) {
         self.onTextChange = onTextChange

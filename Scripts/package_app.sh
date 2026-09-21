@@ -228,6 +228,8 @@ if [[ "${CURSORPAD_INSTALL}" == "1" ]]; then
 	if ! RUNNING_PATH="$(osascript -e "POSIX path of (path to application id \"${BUNDLE_IDENTIFIER}\")" 2>/dev/null)"; then
 		RUNNING_PATH=""
 	fi
+	# LaunchServices reports the bundle with a trailing slash. Compare the directory, not the punctuation.
+	RUNNING_PATH="${RUNNING_PATH%/}"
 	[[ "${RUNNING_PATH}" == "${INSTALL_TARGET}" ]] || fatal "LaunchServices resolved ${BUNDLE_IDENTIFIER} to '${RUNNING_PATH}', expected ${INSTALL_TARGET}"
 	log "installed and launched: ${INSTALL_TARGET}"
 fi

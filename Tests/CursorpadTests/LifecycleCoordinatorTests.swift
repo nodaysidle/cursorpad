@@ -394,7 +394,7 @@ struct LifecycleCoordinatorTests {
         #expect(state.lifecycle.completedStepNames.first == "open-storage")
         #expect(state.lifecycle.completedStepNames.contains("reconcile-library"))
         #expect(state.lifecycle.completedStepNames.last == "restore-selection")
-        #expect(state.libraryStatus == .ready)
+        #expect(state.libraryStatus == .succeeded)
         #expect(state.dataStore != nil)
         let gate = DeadlineGate()
         state.lifecycle.deadlineTimer = { duration in
@@ -425,7 +425,7 @@ struct LifecycleCoordinatorTests {
         try FileManager.default.removeItem(at: blockedRoot)
         await state.retryStorageStartup()
         #expect(state.lifecycle.state == .succeeded)
-        #expect(state.libraryStatus == .ready)
+        #expect(state.libraryStatus == .succeeded)
         let gate = DeadlineGate()
         state.lifecycle.deadlineTimer = { duration in
             gate.arm(duration)

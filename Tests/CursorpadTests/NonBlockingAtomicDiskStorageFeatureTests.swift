@@ -976,7 +976,7 @@ struct NonBlockingAtomicDiskStorageFeatureTests {
                 "the body write keeps NSDataWritingAtomic semantics")
 
         let appState = try readPackageFile("Sources/Cursorpad/AppState.swift")
-        #expect(appState.contains("let autosave = NonBlockingAtomicDiskStorage()"))
+        #expect(appState.contains("self.autosave = NonBlockingAtomicDiskStorage(debounceInterval: services.debounceInterval)"))
         #expect(appState.contains("private(set) var autosaveFailure: String?"))
         #expect(appState.contains("await self.autosave.attach(writer: .live(for: store))"))
         #expect(appState.contains("await autosave.discard()"), "a rolled-back launch drops pending text")

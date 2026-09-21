@@ -29,6 +29,8 @@ struct AutosaveCommit: Equatable, Sendable {
     let fileName: String
     let stamp: Date
     let document: NoteDocument
+    /// Editor edit sequence that this commit contains. A later keystroke keeps the note unsaved.
+    let generation: Int
 }
 
 /// Everything the composition root mirrors into presentation state.
@@ -258,7 +260,8 @@ actor NonBlockingAtomicDiskStorage {
                 noteID: write.noteID,
                 fileName: write.fileName,
                 stamp: stamp,
-                document: document
+                document: document,
+                generation: write.generation
             )
             if let scheduledAt { lastCommitLatency = clock.now - scheduledAt }
             scheduledAt = nil

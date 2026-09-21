@@ -256,7 +256,9 @@ struct CommandPaletteOverlayView: View {
         .contentShape(Rectangle())
         .onTapGesture { state.selectPaletteResult(id: ranked.id) }
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityLabel(ranked.entry.title)
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
         .accessibilityIdentifier("palette-result-\(ranked.id)")
     }
 

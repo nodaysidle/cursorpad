@@ -21,6 +21,11 @@ struct CursorpadApp: App {
                 Button("New Note") { state.newNote() }
                     .keyboardShortcut("n", modifiers: .command)
             }
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") { state.saveNow() }
+                    .keyboardShortcut("s", modifiers: .command)
+                    .disabled(!state.canSaveNow)
+            }
             // Remove the default Print item so Command + P is free for the command palette.
             CommandGroup(replacing: .printItem) { }
             // Command Palette — Command + P and Command + K.
@@ -34,6 +39,9 @@ struct CursorpadApp: App {
             CommandGroup(replacing: .sidebar) {
                 Button("Toggle Sidebar") { state.toggleSidebar() }
                     .keyboardShortcut("b", modifiers: .command)
+            }
+            CommandGroup(after: .textEditing) {
+                Button("Retry Editor Font") { state.retryEditorTypography() }
             }
         }
     }

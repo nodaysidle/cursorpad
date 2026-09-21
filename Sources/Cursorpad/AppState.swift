@@ -76,14 +76,31 @@ final class AppState {
         }
     }
 
-    /// Library load state: `idle`, `active` (loading), `succeeded`, `failed`, `cancelled`.
+    /// Library load state. Matches the recovery vocabulary: idle, active, succeeded, failed, cancelled.
     enum LibraryStatus: Equatable, Sendable {
         case idle
-        case loading
-        case ready
+        case active
+        case succeeded
         case failed(String)
+        case cancelled
 
-        var isReady: Bool { self == .ready }
+        var isReady: Bool { self == .succeeded }
+
+        var canRetryStartup: Bool {
+            switch self {
+            case .failed, .cancelled:
+                return true
+            case .idle, .active, .succeeded:
+                return false
+            }
+        }
+    }
+
+    /// Whether the open note still has keystrokes that have not reached disk.
+    enum NotePersistenceStatus: Equatable, Sendable {
+        case saved
+        case unsaved
+        case saving
     }
 
     /// Errors raised by the composition root itself (never by user-visible features).
@@ -101,7 +118,7 @@ final class AppState {
     let permissions = PermissionCoordinator()
     /// Debounced, off-main atomic body writes (PHASE-08,
     /// CON-NON-BLOCKING-ATOMIC-DISK-STORAGE-INTERFACE).
-    let autosave = NonBlockingAtomicDiskStorage()
+    let autosave: NonBlockingAtomicDiskStorage
     /// Status-bar indicator for a failed autosave. The text itself stays in the autosave's memory
     /// buffer until the user explicitly retries (CON-NON-BLOCKING-ATOMIC-DISK-STORAGE-RECOVERY).
     private(set) var autosaveFailure: String?
@@ -137,23 +154,29 @@ final class AppState {
     private(set) var editorFontSource: EditorFontSource = .sfMono
     private(set) var editorFontNotice: String?
     private(set) var editorTypographyRetryRequests = 0
+    private(set) var editorConfiguration: EditorConfiguration
+    private(set) var notePersistenceStatus: NotePersistenceStatus = .saved
+    /// Status text set while a font retry is in flight. Cleared when the editor reports the result.
+    static let editorFontRecheckMessage = "Re-checking the editor font…"
 
     // MARK: Services and private state
 
     private(set) var dataStore: DataStore?
-    private var noteBodies: [String: String] = [:]
     private var loadedNoteID: String?
     private var selectionGeneration = 0
     private var pendingOperations: [Task<Void, Never>] = []
     /// Editor edit sequence and the autosave submissions that carry it, so the quit path and the
     /// focused checks can wait for every handed-over edit deterministically.
     private var editorEditGeneration = 0
+    private var latestSubmittedGeneration = 0
     private var autosaveSubmissions: [Task<Void, Never>] = []
     private(set) var hasStarted = false
     private var terminationHookInstalled = false
 
     init(services: Services = .live) {
         self.services = services
+        self.autosave = NonBlockingAtomicDiskStorage(debounceInterval: services.debounceInterval)
+        self.editorConfiguration = EditorConfigurationStore(defaults: services.userDefaults).load()
     }
 
     // MARK: - Lifecycle
@@ -168,14 +191,14 @@ final class AppState {
 
     /// Explicit user retry after a failed launch (recovery contract: retries are user-initiated).
     func retryStorageStartup() async {
-        guard case .failed = libraryStatus else { return }
+        guard libraryStatus.canRetryStartup else { return }
         statusMessage = "Retrying storage…"
         lifecycle.reset()
         await launchStorage()
     }
 
     private func launchStorage() async {
-        libraryStatus = .loading
+        libraryStatus = .active
         installLaunchStepsIfNeeded()
         switch await lifecycle.launch() {
         case .succeeded, .idle, .active:
@@ -184,7 +207,7 @@ final class AppState {
             libraryStatus = .failed(description)
             statusMessage = "Storage unavailable — \(description)"
         case .cancelled:
-            libraryStatus = .failed("launch was cancelled")
+            libraryStatus = .cancelled
             statusMessage = "Storage unavailable — launch was cancelled."
         }
     }
@@ -217,7 +240,7 @@ final class AppState {
             let snapshot = try await store.librarySnapshot()
             self.notes = snapshot.notes
             self.missingBodyNoteIDs = Set(snapshot.missingBodyIDs)
-            self.libraryStatus = .ready
+            self.libraryStatus = .succeeded
             self.publishSidebarRows()
             self.statusMessage = Self.reconciliationSummary(report: report, snapshot: snapshot)
         }
@@ -361,7 +384,7 @@ final class AppState {
             do {
                 let note = try await dataStore.createNote()
                 self.notes.insert(note, at: 0)
-                self.noteBodies[note.id] = ""
+                self.notePersistenceStatus = .saved
                 self.statusMessage = nil
                 await self.bindSelection(to: note.id)
             } catch {
@@ -411,7 +434,6 @@ final class AppState {
     func confirmPaletteSelection() {
         guard isCommandPalettePresented else { return }
         guard let ranked = paletteSession.selected else {
-            dismissCommandPalette()
             return
         }
         dismissCommandPalette()
@@ -522,6 +544,7 @@ final class AppState {
         guard text != editorText else { return }
         editorText = text
         editorCharacterCount = text.count
+        notePersistenceStatus = .unsaved
         scheduleAutosave(for: text)
     }
 
@@ -533,6 +556,7 @@ final class AppState {
         guard let noteID = loadedNoteID, let note = notes.first(where: { $0.id == noteID }) else { return }
         editorEditGeneration += 1
         let generation = editorEditGeneration
+        latestSubmittedGeneration = generation
         let fileName = note.fileName
         let task = Task { [autosave] in
             await autosave.scheduleTextChange(
@@ -569,6 +593,55 @@ final class AppState {
     /// Explicit user retry of a failed autosave. Nothing retries on its own; the retained text is
     /// re-attempted only because the user asked again
     /// (CON-NON-BLOCKING-ATOMIC-DISK-STORAGE-RECOVERY).
+    /// Explicit save. Autosave still runs after 250 ms; this commits the pending edit immediately.
+    func saveNow() {
+        guard !rejectIfTerminating() else { return }
+        guard loadedNoteID != nil else {
+            statusMessage = "Open a note before saving."
+            return
+        }
+        if autosaveFailure != nil {
+            notePersistenceStatus = .saving
+            statusMessage = "Saving…"
+            retryAutosave()
+            return
+        }
+        guard notePersistenceStatus == .unsaved else {
+            statusMessage = "Saved"
+            return
+        }
+        notePersistenceStatus = .saving
+        statusMessage = "Saving…"
+        enqueue { [weak self] in
+            guard let self else { return }
+            await self.flushAutosave()
+            if self.autosaveFailure == nil {
+                if self.notePersistenceStatus == .saving {
+                    self.notePersistenceStatus = .saved
+                }
+                if self.statusMessage == "Saving…" {
+                    self.statusMessage = "Saved"
+                }
+            }
+        }
+    }
+
+    var canSaveNow: Bool {
+        loadedNoteID != nil && notePersistenceStatus != .saving && !lifecycle.isTerminating
+    }
+
+    var saveStatusLabel: String {
+        if autosaveFailure != nil { return "Not saved" }
+        switch notePersistenceStatus {
+        case .saved:
+            return "Saved"
+        case .unsaved:
+            return "Unsaved changes"
+        case .saving:
+            return "Saving…"
+        }
+    }
+
     func retryAutosave() {
         guard !rejectIfTerminating() else { return }
         guard autosaveFailure != nil else {
@@ -589,9 +662,17 @@ final class AppState {
         case .scheduled, .discarded:
             break
         case .committed(let commit):
+            if commit.generation >= latestSubmittedGeneration {
+                notePersistenceStatus = .saved
+                if statusMessage == "Saving…" {
+                    statusMessage = "Saved"
+                }
+            }
             if autosaveFailure != nil {
                 autosaveFailure = nil
-                statusMessage = nil
+                if statusMessage?.hasPrefix("Autosave failed") == true {
+                    statusMessage = nil
+                }
             }
             if missingBodyNoteIDs.contains(commit.noteID) {
                 missingBodyNoteIDs.remove(commit.noteID)
@@ -604,6 +685,7 @@ final class AppState {
             applyRefreshedNote(commit.document)
         case .failed(_, _, let message):
             autosaveFailure = message
+            notePersistenceStatus = .unsaved
             statusMessage = "Autosave failed — \(message)"
         }
     }
@@ -612,12 +694,15 @@ final class AppState {
     func editorTypographyResolved(_ source: EditorFontSource) {
         editorFontSource = source
         editorFontNotice = source.explanation
+        if statusMessage == Self.editorFontRecheckMessage {
+            statusMessage = source.explanation
+        }
     }
 
     /// Explicit retry of the editor typography (CON-CURSOR-DARK-MONOSPACE-EDITOR-RECOVERY).
     func retryEditorTypography() {
         editorTypographyRetryRequests += 1
-        statusMessage = "Re-checking the editor font…"
+        statusMessage = Self.editorFontRecheckMessage
     }
 
     /// Selects a note and binds the editor to its body. Safe to call with an unknown id.
@@ -657,7 +742,7 @@ final class AppState {
             guard generation == selectionGeneration else { return }
             editorText = text
             editorCharacterCount = text.count
-            noteBodies[id] = text
+            notePersistenceStatus = .saved
             loadedNoteID = id
             if missingBodyNoteIDs.remove(id) != nil {
                 do {
@@ -746,7 +831,6 @@ final class AppState {
                 try await dataStore.deleteNote(id: id)
 
                 self.notes.removeAll { $0.id == id }
-                self.noteBodies[id] = nil
                 self.missingBodyNoteIDs.remove(id)
                 self.pendingDeletionNoteID = nil
                 self.pendingDeletionFailure = nil
@@ -896,6 +980,7 @@ struct AppRootView: View {
             } else {
                 CursorDarkMonospaceEditorView(
                     text: state.editorText,
+                    configuration: state.editorConfiguration,
                     onTextChange: { newText in state.applyEditorText(newText) },
                     focusRequests: state.editorFocusRequests,
                     typographyRetryRequests: state.editorTypographyRetryRequests,
@@ -913,7 +998,25 @@ struct AppRootView: View {
 
     private var statusLine: some View {
         HStack(spacing: 8) {
-            if case .failed = state.libraryStatus {
+            if state.selectedNoteID != nil {
+                Button {
+                    state.saveNow()
+                } label: {
+                    Label("Save", systemImage: "square.and.arrow.down")
+                }
+                .labelStyle(.titleAndIcon)
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .disabled(!state.canSaveNow)
+                .accessibilityIdentifier("save-button")
+                .accessibilityLabel("Save note")
+                .accessibilityHint("Writes the open note to disk now. Autosave still runs after you stop typing.")
+                Text(state.saveStatusLabel)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(state.notePersistenceStatus == .unsaved ? EditorSurfaceTokens.accent : EditorSurfaceTokens.textSecondary)
+                    .accessibilityIdentifier("save-status")
+            }
+            if state.libraryStatus.canRetryStartup {
                 Button("Retry Storage") {
                     Task { await state.retryStorageStartup() }
                 }
@@ -929,18 +1032,13 @@ struct AppRootView: View {
                     .controlSize(.small)
                     .accessibilityIdentifier("delete-dismiss-button")
             }
-            if state.editorFontNotice != nil {
-                Button("Retry Editor Font") { state.retryEditorTypography() }
-                    .controlSize(.small)
-                    .accessibilityIdentifier("editor-font-retry-button")
-            }
             if state.autosaveFailure != nil {
                 Button("Retry Autosave") { state.retryAutosave() }
                     .controlSize(.small)
                     .accessibilityIdentifier("autosave-retry-button")
                     .accessibilityLabel("Retry saving the note")
             }
-            Text(state.statusMessage ?? state.editorFontNotice ?? "Ready")
+            Text(state.statusMessage ?? (state.selectedNoteID == nil ? "Ready" : ""))
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

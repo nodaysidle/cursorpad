@@ -238,6 +238,8 @@ struct CommandPaletteNoteNavigationFeatureTests {
         state.updatePaletteQuery("no-such-note-title")
         #expect(state.paletteZeroResultMessage == "No matching notes found")
         #expect(state.isCommandPalettePresented)
+        state.confirmPaletteSelection()
+        #expect(state.isCommandPalettePresented, "Enter on zero results keeps the search field active")
         state.dismissCommandPalette()
         await state.flushForTermination()
     }

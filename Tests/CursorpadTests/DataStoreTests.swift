@@ -477,7 +477,7 @@ struct DataStoreTests {
 
         let state = AppState(services: services)
         await state.start()
-        #expect(state.libraryStatus == .ready)
+        #expect(state.libraryStatus == .succeeded)
         #expect(state.notes.isEmpty)
 
         state.newNote()
@@ -543,7 +543,7 @@ struct DataStoreTests {
         // The user fixes the problem and retries explicitly.
         try FileManager.default.removeItem(at: blockedRoot)
         await state.retryStorageStartup()
-        #expect(state.libraryStatus == .ready)
+        #expect(state.libraryStatus == .succeeded)
         state.newNote()
         await state.waitForPendingOperations()
         #expect(state.notes.count == 1)

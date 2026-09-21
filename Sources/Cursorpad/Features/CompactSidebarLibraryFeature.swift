@@ -257,7 +257,6 @@ struct CompactSidebarEmptyStateView: View {
                 .foregroundStyle(EditorSurfaceTokens.textSecondary)
                 .multilineTextAlignment(.center)
             Button("New Note", action: onCreateNote)
-                .keyboardShortcut("n", modifiers: [.command, .shift])
                 .accessibilityIdentifier("empty-state-new-note-button")
                 .accessibilityLabel("New note")
         }
