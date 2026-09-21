@@ -1,0 +1,11 @@
+# Build and package outputs (never source).
+.build/
+.swiftpm/
+dist/
+DerivedData/
+*.dmg
+Package.resolved
+
+# Local scratch / probes.
+*.iconset/
+.DS_Store
