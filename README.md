@@ -74,7 +74,7 @@ Built in **100% native Swift 6** using Apple's modern **TextKit 2** layout subsy
  │  • Independent Architectural & Security Audit           │
  │  • Jev TypeSafe System One Evaluation (1.88/2.00 Score) │
  │  • 145/145 Automated Unit & Integration Tests Passed    │
- │  • Signed App Packaging & Universal DMG Assembly        │
+ │  • Signed App Packaging & DMG Assembly                  │
  └─────────────────────────────────────────────────────────┘
 ```
 
@@ -184,13 +184,15 @@ Distribution artifacts will be generated in `dist/`:
 
 ### Download
 
-Download [`CursorPad.dmg`](https://github.com/nodaysidle/cursorpad/releases/download/v1.0.0/CursorPad.dmg) from the [latest release (`v1.0.0`)](https://github.com/nodaysidle/cursorpad/releases/tag/v1.0.0).
+The latest release is [`v1.0.0`](https://github.com/nodaysidle/cursorpad/releases/tag/v1.0.0). Download [`CursorPad.dmg`](https://github.com/nodaysidle/cursorpad/releases/download/v1.0.0/CursorPad.dmg) (macOS 14+, Apple Silicon).
 
 | File | Size | SHA-256 |
 |---|---|---|
 | `CursorPad.dmg` | 479,403 bytes | `9708d2e79857fe67f94f09b35eb68a5fa0fd4258f9d54fc29f8e69af6672a963` |
 
-Verify with `shasum -a 256 CursorPad.dmg`. Note: `main` may be ahead of the `v1.0.0` release.
+Verify with `shasum -a 256 CursorPad.dmg` and compare against the SHA-256 above.
+
+The v1.1.0 changes on `main` (described in [`RELEASE_NOTES.md`](RELEASE_NOTES.md)) are unreleased: there is no v1.1.0 tag or Mac build yet, so `CursorPad.dmg` from `v1.0.0` does not include them. To try them, build from source as described above.
 
 ### Installation
 
