@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Native, ultra-fast macOS notepad with signature Cursor dark theme, sub-100ms launch, zero-latency TextKit 2 typing, and local atomic persistence.</strong>
+  <strong>Native macOS notepad with a Cursor-style dark theme, TextKit 2 editing, and local atomic persistence.</strong>
 </p>
 
 <p align="center">
@@ -13,16 +13,15 @@
   <img src="https://img.shields.io/badge/Swift-6.0%20Strict%20Concurrency-F05138?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 6.0" />
   <img src="https://img.shields.io/badge/Dependencies-Zero%20(100%25%20Native)-22c55e?style=for-the-badge" alt="Zero Dependencies" />
   <img src="https://img.shields.io/badge/Theme-Cursor%20Dark%20Obsidian-80bfff?style=for-the-badge" alt="Cursor Dark Theme" />
-  <img src="https://img.shields.io/badge/Tests-145%20Passed-success?style=for-the-badge" alt="Tests Passed" />
 </p>
 
 ---
 
 ## Overview
 
-**CursorPad** is an obsessively fast, distraction-free macOS native desktop notepad designed specifically for engineers and writers who live in the dark editor aesthetic. Styled precisely after the **Cursor IDE** visual language (`#181818` background, `#80bfff` electric blue accents, SF Mono typography, and muted gutter line numbers), CursorPad delivers instant responsiveness with zero electron bloat.
+**CursorPad** is a distraction-free macOS native desktop notepad designed specifically for engineers and writers who live in the dark editor aesthetic. Styled precisely after the **Cursor IDE** visual language (`#181818` background, `#80bfff` electric blue accents, SF Mono typography, and muted gutter line numbers) with no Electron.
 
-Built in **100% native Swift 6** using Apple's modern **TextKit 2** layout subsystem, CursorPad launches in under 100 milliseconds, autosaves atomically off the main thread, and features a frictionless keyboard-first command palette (`Cmd+P` / `Cmd+K`) for rapid note switching.
+Built in **100% native Swift 6** using Apple's modern **TextKit 2** layout subsystem, CursorPad autosaves atomically off the main thread, and features a frictionless keyboard-first command palette (`Cmd+P` / `Cmd+K`) for rapid note switching.
 
 ---
 
@@ -75,7 +74,7 @@ Built in **100% native Swift 6** using Apple's modern **TextKit 2** layout subsy
  │  • Independent Architectural & Security Audit           │
  │  • Jev TypeSafe System One Evaluation (1.88/2.00 Score) │
  │  • 145/145 Automated Unit & Integration Tests Passed    │
- │  • Signed App Packaging & Universal DMG Assembly        │
+ │  • Signed App Packaging & DMG Assembly                  │
  └─────────────────────────────────────────────────────────┘
 ```
 
@@ -172,7 +171,7 @@ cursorpad/
 git clone https://github.com/nodaysidle/cursorpad.git
 cd cursorpad
 
-# Run automated tests (all 145 tests pass)
+# Run automated tests
 swift test
 
 # Build release binary, verify codesign, and build DMG
@@ -183,9 +182,21 @@ Distribution artifacts will be generated in `dist/`:
 - App Bundle: `dist/CursorPad.app`
 - Disk Image: `dist/CursorPad.dmg`
 
+### Download
+
+The latest release is [`v1.0.0`](https://github.com/nodaysidle/cursorpad/releases/tag/v1.0.0). Download [`CursorPad.dmg`](https://github.com/nodaysidle/cursorpad/releases/download/v1.0.0/CursorPad.dmg) (macOS 14+, Apple Silicon).
+
+| File | Size | SHA-256 |
+|---|---|---|
+| `CursorPad.dmg` | 479,403 bytes | `9708d2e79857fe67f94f09b35eb68a5fa0fd4258f9d54fc29f8e69af6672a963` |
+
+Verify with `shasum -a 256 CursorPad.dmg` and compare against the SHA-256 above.
+
+The v1.1.0 changes on `main` (described in [`RELEASE_NOTES.md`](RELEASE_NOTES.md)) are unreleased: there is no v1.1.0 tag or Mac build yet, so `CursorPad.dmg` from `v1.0.0` does not include them. To try them, build from source as described above.
+
 ### Installation
 
-Install the verified build into `/Applications`:
+Install a locally built copy into `/Applications`:
 
 ```bash
 # Using the package script directly
